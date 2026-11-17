@@ -61,6 +61,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "about", label: "About", href: "#about" },
   { id: "insights", label: "Insights", href: "#insights" },
   { id: "research", label: "Research", href: "#research" },
+  { id: "news", label: "News", href: "#news" },
 ];
 
 export const HERO_CHART_SERIES: HeroChartSeries[] = [

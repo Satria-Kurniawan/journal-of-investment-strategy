@@ -7,6 +7,7 @@
   import Footer from './Footer.svelte';
   import HeroSection from './HeroSection.svelte';
   import IntelligenceCategories from './IntelligenceCategories.svelte';
+  import LatestNews from './LatestNews.svelte';
   import MarketSnapshot from './MarketSnapshot.svelte';
   import Navbar from './Navbar.svelte';
   import PlatformPreviewModal from './PlatformPreviewModal.svelte';
@@ -75,7 +76,7 @@
     handleScroll();
     window.addEventListener('scroll', handleScroll, { passive: true });
 
-    const sectionIds = ['overview', 'markets', 'about', 'insights', 'research'];
+    const sectionIds = ['overview', 'markets', 'about', 'insights', 'research', 'news'];
     const sectionObserver = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -129,6 +130,10 @@
 
   <div class={revealClasses} use:reveal>
     <FeaturedResearch onOpenBrief={openBrief} />
+  </div>
+
+  <div class={revealClasses} use:reveal>
+    <LatestNews />
   </div>
 
   <div class={revealClasses} use:reveal>

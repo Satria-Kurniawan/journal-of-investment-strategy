@@ -4,6 +4,7 @@
   import { HERO_CHART_SERIES, type HeroChartSeries } from '../data/landingData';
 
   interface HeroTicker {
+    id: string;
     label: string;
     shortLabel: string;
     price: string;
@@ -11,11 +12,29 @@
     positive: boolean;
   }
 
-  const HERO_TICKERS: HeroTicker[] = [
-    { label: 'Bitcoin (BTC)', shortLabel: 'BTC', price: '$91,420', change: '+2.34%', positive: true },
-    { label: 'S&P 500', shortLabel: 'S&P 500', price: '5,942.10', change: '+0.48%', positive: true },
-    { label: 'Gold (XAU)', shortLabel: 'Gold', price: '$2,618.80', change: '+0.85%', positive: true }
+  interface MarketPatch {
+    id: string;
+    priceFormatted: string;
+    changePct: number;
+    direction: 'up' | 'down';
+  }
+
+  interface HeroMarketsPayload {
+    fetchedAt?: string;
+    items?: MarketPatch[];
+    heroSeries?: HeroChartSeries[];
+  }
+
+  const INITIAL_HERO_TICKERS: HeroTicker[] = [
+    { id: 'bitcoin', label: 'Bitcoin (BTC)', shortLabel: 'BTC', price: '$91,420', change: '+2.34%', positive: true },
+    { id: 'sp500', label: 'S&P 500', shortLabel: 'S&P 500', price: '5,942.10', change: '+0.48%', positive: true },
+    { id: 'gold', label: 'Gold (XAU)', shortLabel: 'Gold', price: '$2,618.80', change: '+0.85%', positive: true }
   ];
+
+  let heroTickers = $state<HeroTicker[]>(INITIAL_HERO_TICKERS);
+  let heroChartSeries = $state<HeroChartSeries[]>(HERO_CHART_SERIES);
+  let isLive = $state(false);
+  let fetchedAt = $state<string | null>(null);
 
   let activeSeriesId = $state<HeroChartSeries['id']>('liquidity');
   let hoveredIndex = $state<number | null>(null);
@@ -57,12 +76,63 @@
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll, { passive: true });
 
+    const controller = new AbortController();
+    fetch('/api/markets', {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as HeroMarketsPayload;
+
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          const patchMap = new Map(data.items.map((item) => [item.id, item]));
+          heroTickers = INITIAL_HERO_TICKERS.map((base) => {
+            const patch = patchMap.get(base.id);
+            if (!patch) return base;
+            const sign = patch.changePct >= 0 ? '+' : '';
+            return {
+              ...base,
+              price: patch.priceFormatted,
+              change: `${sign}${patch.changePct.toFixed(2)}%`,
+              positive: patch.direction === 'up'
+            };
+          });
+          isLive = true;
+          fetchedAt = data.fetchedAt ?? null;
+        }
+
+        if (Array.isArray(data.heroSeries) && data.heroSeries.length > 0) {
+          const seriesMap = new Map(data.heroSeries.map((s) => [s.id, s]));
+          heroChartSeries = HERO_CHART_SERIES.map((base) => seriesMap.get(base.id) ?? base);
+          isLive = true;
+        }
+      })
+      .catch(() => {
+        // Keep fallback preview values when offline or static
+      });
+
     return () => {
+      controller.abort();
       if (rafId !== 0) window.cancelAnimationFrame(rafId);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
       mq.removeEventListener('change', handleMotionChange);
     };
+  });
+
+  const liveTimestamp = $derived.by(() => {
+    if (!fetchedAt) return '';
+    const parsed = new Date(fetchedAt);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return (
+      new Intl.DateTimeFormat('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'UTC'
+      }).format(parsed) + ' UTC'
+    );
   });
 
   // Symmetrical, collision-free Apple-style scroll parallax (disabled under prefers-reduced-motion)
@@ -76,7 +146,7 @@
   const innerChartY = $derived(reducedMotion ? 0 : -macProgress * 6);
 
   const activeSeries = $derived(
-    HERO_CHART_SERIES.find((series) => series.id === activeSeriesId) ?? HERO_CHART_SERIES[0]
+    heroChartSeries.find((series) => series.id === activeSeriesId) ?? heroChartSeries[0]
   );
 
   const chartBounds = $derived.by(() => {
@@ -247,8 +317,13 @@
                   <span class="text-[8px] font-semibold tracking-[0.14em] text-ink sm:text-[10px]">
                     JISOO
                   </span>
-                  <span class="font-mono text-[8px] tracking-[0.06em] text-ink-muted sm:text-[9px]">
-                    SAMPLE PREVIEW
+                  <span class="inline-flex items-center gap-1.5 font-mono text-[8px] tracking-[0.06em] text-ink-muted sm:text-[9px]">
+                    {#if isLive}
+                      <span class="h-1.5 w-1.5 rounded-full bg-positive" aria-hidden="true"></span>
+                      <span>LIVE{liveTimestamp ? ` · ${liveTimestamp}` : ''}</span>
+                    {:else}
+                      <span>SAMPLE PREVIEW</span>
+                    {/if}
                   </span>
                 </div>
 
@@ -256,7 +331,7 @@
                 <div class="flex flex-col gap-[7px] p-[8px_9px_9px] sm:gap-3 sm:p-[12px_14px_14px] md:gap-4 md:p-[18px_24px_20px]">
                   <!-- Quiet 3-Metric Strip (Always Horizontal Row) -->
                   <div class="grid grid-cols-3 rounded-md border border-line bg-surface">
-                    {#each HERO_TICKERS as item (item.label)}
+                    {#each heroTickers as item (item.id)}
                       <div class="flex flex-col gap-px border-r border-line px-[7px] py-[5px] last:border-r-0 sm:gap-[3px] sm:px-3.5 sm:py-2.5">
                         <span class="hidden text-[11px] text-ink-muted sm:block">{item.label}</span>
                         <span class="block text-[9px] text-ink-muted sm:hidden">{item.shortLabel}</span>
@@ -279,7 +354,7 @@
                     <div class="mb-1 flex items-center justify-between gap-2 sm:mb-2.5 sm:items-start sm:gap-3">
                       <div>
                         <h2 class="text-[11px] leading-tight font-semibold text-ink sm:text-sm">
-                          Composite Liquidity Index
+                          {activeSeries.id === 'liquidity' ? 'Composite Liquidity Index' : activeSeries.label}
                         </h2>
                         <p class="mt-0.5 hidden text-xs text-ink-muted sm:block">
                           {activeSeries.subtitle}
@@ -308,7 +383,7 @@
                       role="tablist"
                       aria-label="Illustrative regime series"
                     >
-                      {#each HERO_CHART_SERIES as series (series.id)}
+                      {#each heroChartSeries as series (series.id)}
                         {@const active = activeSeriesId === series.id}
                         <button
                           type="button"

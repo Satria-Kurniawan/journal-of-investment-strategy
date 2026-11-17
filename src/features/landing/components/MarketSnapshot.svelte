@@ -1,9 +1,28 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { MARKET_SNAPSHOT_DATA, type MarketSnapshotAsset } from '../data/landingData';
 
   type FilterOption = 'All' | MarketSnapshotAsset['assetClass'];
 
+  interface MarketPatch {
+    id: string;
+    priceFormatted: string;
+    changePct: number;
+    direction: 'up' | 'down';
+    contextLabel: string;
+  }
+
+  interface MarketsApiPayload {
+    fetchedAt: string;
+    sources: string[];
+    items: MarketPatch[];
+  }
+
   let selectedFilter = $state<FilterOption>('All');
+  let assets = $state<MarketSnapshotAsset[]>(MARKET_SNAPSHOT_DATA);
+  let isLive = $state(false);
+  let fetchedAt = $state<string | null>(null);
+  let sources = $state<string[]>([]);
 
   const filterTabs: { value: FilterOption; label: string }[] = [
     { value: 'All', label: 'All' },
@@ -15,9 +34,53 @@
 
   const visibleAssets = $derived(
     selectedFilter === 'All'
-      ? MARKET_SNAPSHOT_DATA
-      : MARKET_SNAPSHOT_DATA.filter((asset) => asset.assetClass === selectedFilter)
+      ? assets
+      : assets.filter((asset) => asset.assetClass === selectedFilter)
   );
+
+  const liveTimestamp = $derived.by(() => {
+    if (!fetchedAt) return '';
+    const parsed = new Date(fetchedAt);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return (
+      new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'UTC'
+      }).format(parsed) + ' UTC'
+    );
+  });
+
+  onMount(() => {
+    const controller = new AbortController();
+
+    fetch('/api/markets', {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as Partial<MarketsApiPayload>;
+        if (!Array.isArray(data.items) || data.items.length === 0) return;
+
+        const patchMap = new Map(data.items.map((item) => [item.id, item]));
+        assets = MARKET_SNAPSHOT_DATA.map((base) => {
+          const patch = patchMap.get(base.id);
+          return patch ? { ...base, ...patch } : base;
+        });
+        isLive = true;
+        fetchedAt = data.fetchedAt ?? null;
+        sources = Array.isArray(data.sources) ? data.sources : [];
+      })
+      .catch(() => {
+        // Silently keep illustrative fallback snapshot when offline or static preview
+      });
+
+    return () => controller.abort();
+  });
 </script>
 
 <section id="markets" class="border-b border-line py-12 md:py-16">
@@ -31,7 +94,11 @@
       </div>
       <div class="flex flex-col items-start gap-3 min-[901px]:items-end">
         <p class="font-mono text-[11px] tracking-[0.06em] text-ink-muted">
-          ILLUSTRATIVE SAMPLE DATA · PHASE 1 PREVIEW
+          {#if isLive}
+            LIVE MARKET SNAPSHOT · UPDATED {liveTimestamp.toUpperCase()}
+          {:else}
+            ILLUSTRATIVE SAMPLE DATA · PHASE 1 PREVIEW
+          {/if}
         </p>
         <div class="flex flex-wrap gap-3 sm:gap-4" role="tablist" aria-label="Filter market benchmarks by asset class">
           {#each filterTabs as tab (tab.value)}
@@ -113,9 +180,13 @@
     </div>
 
     <p class="mt-4 max-w-[78ch] text-xs leading-normal text-ink-muted">
-      Benchmarks above use structured placeholder figures to demonstrate cross-asset coverage. Live market
-      adapters (CoinGecko, Alternative.me, and macroeconomic feeds) are scoped for subsequent application
-      phases.
+      {#if isLive}
+        Live benchmark quotes sourced via {sources.join(' & ') || 'external market feeds'} through
+        <code class="font-mono">/api/markets</code> (cached at edge). Prices are informational only.
+      {:else}
+        Benchmarks above use structured placeholder figures to demonstrate cross-asset coverage. Live market
+        quotes load automatically when connected to <code class="font-mono">/api/markets</code>.
+      {/if}
     </p>
   </div>
 </section>
