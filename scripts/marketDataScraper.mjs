@@ -149,19 +149,20 @@ async function fetchYahooMonthlySeries(symbol) {
   const timestamps = result?.timestamp ?? [];
   const closes = result?.indicators?.quote?.[0]?.close ?? [];
 
-  const points = [];
+  const byMonth = new Map();
   for (let i = 0; i < timestamps.length; i++) {
     const close = Number(closes[i]);
     if (!Number.isFinite(close) || close <= 0) continue;
     const date = new Date(timestamps[i] * 1000);
-    points.push({
+    const monthKey = `${date.getUTCFullYear()}-${date.getUTCMonth()}`;
+    byMonth.set(monthKey, {
       period: MONTH_NAMES[date.getUTCMonth()],
       close,
     });
   }
 
-  // Keep the most recent 12 monthly observations
-  return points.slice(-12);
+  // Keep the most recent 12 unique monthly observations
+  return [...byMonth.values()].slice(-12);
 }
 
 function normalizeTo100(series) {

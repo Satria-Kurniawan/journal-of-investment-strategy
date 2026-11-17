@@ -408,7 +408,7 @@
                       onpointermove={handleChartPointerMove}
                       onpointerleave={handleChartPointerLeave}
                     >
-                      {#each yTicks as tick (tick.label)}
+                      {#each yTicks as tick, i (i)}
                         <line
                           x1={PAD_LEFT}
                           x2={SVG_WIDTH - PAD_RIGHT}
@@ -461,7 +461,7 @@
                         stroke-width="2"
                       />
 
-                      {#each plottedPoints as pt, i (pt.period)}
+                      {#each plottedPoints as pt, i (i)}
                         {#if i === 0 || i === 3 || i === 6 || i === 9 || i === plottedPoints.length - 1}
                           <text
                             x={pt.x}
